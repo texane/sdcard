@@ -173,6 +173,11 @@ static void spi_read(uint8_t* s, uint8_t len)
 #define SD_CMD_SIZE 6
 static uint8_t sd_cmd_buf[SD_CMD_SIZE];
 
+#define SD_INFO_V2 (1 << 0)
+#define SD_INFO_HCS (1 << 1)
+#define SD_INFO_CCS (1 << 2)
+static uint8_t sd_info = 0;
+
 static inline void sd_make_cmd
 (uint8_t op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t crc)
 {
@@ -285,11 +290,33 @@ static int sd_setup(void)
     if (sd_cmd_buf[0] & 0xfe) { PRINT_FAIL(); return -1; }
     if (sd_cmd_buf[4] != 0xaa) { PRINT_FAIL(); return -1; }
     if ((sd_cmd_buf[3] & 0xf) != 0x01) { PRINT_FAIL(); return -1; }
+    sd_info |= SD_INFO_V2;
   }
 
-  /* cmd58 (read ocr) */
-  /* acmd41 (send_op_cond, busy) */
-  /* cmd58 (get ccs) */
+  /* cmd58 (read ocr) for voltages */
+
+  /* acmd41 (send_op_cond, busy, in_idle_state) */
+  while (1)
+  {
+    sd_make_cmd(0x41, a, b, c, d, 0xff);
+
+    /* test hcs flag */
+    if (sd_info & SD_INFO_V2) sd_cmd_buf[] |= 1 << ;
+
+    sd_write_cmd();
+
+    sd_read_rX();
+
+    if (ocr.busy) break ;
+  }
+
+  if (sd_info & SD_INFO_V2)
+  {
+    if (ocr & hcs_bit) sd_info |= SD_INFO_HCS;
+
+    /* cmd58 (get ccs) */
+    if (ccs) sd_info |= SD_INFO_CCS;
+  }
 
   return 0;
 }
