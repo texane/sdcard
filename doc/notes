@@ -1,0 +1,14 @@
+[ todo ]
+finalize initialization phase
+increase spi frequencies
+see more in specs about the timings
+
+[ source code ]
+src/pde/SD/ReadWrite.pde working with arduino-0022 SD library
+
+[ 5v mcu (arduino) interfacing ]
+http://www.sparkfun.com/tutorials/65, diode version schematics
+
+[ specs ]
+https://www.sdcard.org/downloads/pls/simplified_specs
+kingstone specs
