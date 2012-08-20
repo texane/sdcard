@@ -154,18 +154,18 @@ static void spi_write(const uint8_t* s, uint8_t len)
   for (; len; --len, ++s) spi_write_uint8(*s);
 }
 
-static inline void spi_read_uint8(uint8_t* x)
+static inline uint8_t spi_read_uint8(void)
 {
   /* by writing to mosi, 8 clock pulses are generated
      allowing the slave to transmit its register on miso
    */
   spi_write_uint8(0xff);
-  *x = SPDR;
+  return SPDR;
 }
 
 static void spi_read(uint8_t* s, uint8_t len)
 {
-  for (; len; --len, ++s) spi_read_uint8(s);
+  for (; len; --len, ++s) *s = spi_read_uint8();
 }
 
 
@@ -178,6 +178,9 @@ static void spi_read(uint8_t* s, uint8_t len)
 
 #define SD_CMD_SIZE 6
 static uint8_t sd_cmd_buf[SD_CMD_SIZE];
+
+#define SD_DATA_SIZE 512
+static uint8_t sd_data_buf[SD_DATA_SIZE];
 
 #define SD_INFO_V2 (1 << 0)
 #define SD_INFO_SDHC (1 << 1)
@@ -216,14 +219,7 @@ static inline void sd_ss_low(void)
 static inline void sd_wait_not_busy(void)
 {
   /* TODO: timeout */
-
-  uint8_t x;
-
-  while (1)
-  {
-    spi_read_uint8(&x);
-    if (x == 0xff) break ;
-  }
+  while (spi_read_uint8() != 0xff) ;
 }
 
 static inline void sd_write_cmd(void)
@@ -246,7 +242,7 @@ static regtype_t sd_read_r1(void)
   /* read reply into sd_cmd_buf, r1 format */
   for (i = 0; i < 10000; ++i)
   {
-    spi_read_uint8(&sd_cmd_buf[0]);
+    sd_cmd_buf[0] = spi_read_uint8();
     /* 0xff means no data transfered (test msb 0) */
     if ((sd_cmd_buf[0] & 0x80) == 0) return 0;
   }
@@ -256,7 +252,7 @@ static regtype_t sd_read_r1(void)
 
 static regtype_t sd_read_r3(void)
 {
-  if (sd_read_r1() == -1) return -1;
+  if (sd_read_r1()) return -1;
   /* illegal command, dont read remaining bytes */
   if (sd_cmd_buf[0] & (1 << 2)) return 0;
   spi_read(sd_cmd_buf + 1, 4);
@@ -269,12 +265,36 @@ static inline regtype_t sd_read_r7(void)
   return sd_read_r3();
 }
 
+static inline void sd_read_block(void) 
+{
+  /* read a 512 bytes data block in sd_data_buf */
+  spi_read(sd_data_buf + 0x000, 0xff);
+  spi_read(sd_data_buf + 0x0ff, 0xff);
+  spi_read(sd_data_buf + 0x1fe, 0x02);
+}
+
 static int sd_read_csd(void)
 {
+  /* in spi mode, the card responds with a response
+     token followed by a data block of 16 bytes and
+     a 2 bytes crc.
+   */
+
   /* read application card specific data */
   sd_make_cmd(0x09, 0x00, 0x00, 0x00, 0x00, 0xff);
   sd_write_cmd();
-  if ((sd_read_r1() == -1) || sd_cmd_buf[0]) return -1;
+  if (sd_read_r1() || sd_cmd_buf[0]) return -1;
+
+  /* read response token */
+  while (spi_read_uint8() != 0xfe) ;
+
+  /* read 512 bytes block */
+  sd_read_block();
+
+  /* skip 2 bytes crc */
+  spi_read_uint8();
+  spi_read_uint8();
+
   return 0;
 }
 
@@ -283,7 +303,7 @@ static regtype_t sd_write_csd(void)
 {
   sd_make_cmd(0x1c, 0x00, 0x00, 0x00, 0x00, 0xff);
   sd_write_cmd();
-  if ((sd_read_r1() == -1) || sd_cmd_buf[0]) return -1;
+  if (sd_read_r1() || sd_cmd_buf[0]) return -1;
   return 0;
 }
 
@@ -322,7 +342,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
   sd_make_cmd(0x08, 0x00, 0x00, 0x01, 0xaa, 0x43);
   sd_write_cmd();
   /* card echos back voltage and check pattern */
-  if (sd_read_r7() == -1) { PRINT_FAIL(); return -1; }
+  if (sd_read_r7()) { PRINT_FAIL(); return -1; }
 
   uart_write_hex(sd_cmd_buf, 5);
   uart_write_string("\r\n");
@@ -397,8 +417,20 @@ static regtype_t sd_setup(uint8_t is_ronly)
 
   /* initialization sequence done, data transfer mode. */
 
+  /* set block length to 512 if not sdhc */
+  if ((sd_info & SD_INFO_SDHC) == 0)
+  {
+    sd_make_cmd(0x10, 0x00, 0x00, 0x02, 0x00, 0xff);
+    sd_write_cmd();
+    if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+  }
+
   /* TODO: cache card infos */
-  if (sd_read_csd() == -1) { PRINT_FAIL(); return -1; }
+  if (sd_read_csd()) { PRINT_FAIL(); return -1; }
+
+  uart_write_string("csd: ");
+  uart_write_hex(sd_data_buf, 14);
+  uart_write_string("\r\n");
 
   /* TODO: disable wp, if supported and is_ronly == 0 */
   if ((sd_info & SD_INFO_WP) && (is_ronly == 0))
