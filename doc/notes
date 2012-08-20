@@ -12,3 +12,6 @@ http://www.sparkfun.com/tutorials/65, diode version schematics
 [ specs ]
 https://www.sdcard.org/downloads/pls/simplified_specs
 kingstone specs
+
+[ atmega328 various type sizes ]
+http://coverclock.blogspot.fr/2012/02/arduino-data-types.html
