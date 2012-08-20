@@ -2,6 +2,18 @@
 #include <avr/io.h>
 
 
+/* on 8 bit mcus, -mint8 not enabled by default and sizeof(int) == 2.
+   we force the use the of register sized integer values via regtype_t
+   to avoid useless code generation, and size reduction.
+ */
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328__)
+typedef int8_t regtype_t;
+typedef uint8_t uregtype_t;
+#else
+# error "unknown architecture"
+#endif
+
+
 #define CONFIG_UART 1
 
 
@@ -206,8 +218,9 @@ static inline void sd_write_cmd(void)
   spi_write(sd_cmd_buf, SD_CMD_SIZE);
 }
 
-static int sd_read_r1(void)
+static regtype_t sd_read_r1(void)
 {
+  /* TODO: reduce to regtype_t if possible */
   uint16_t i;
 
   /* read reply into sd_cmd_buf, r1 format */
@@ -221,7 +234,7 @@ static int sd_read_r1(void)
   return -1;
 }
 
-static int sd_read_r3(void)
+static regtype_t sd_read_r3(void)
 {
   if (sd_read_r1() == -1) return -1;
   /* illegal command, dont read remaining bytes */
@@ -230,7 +243,7 @@ static int sd_read_r3(void)
   return 0;
 }
 
-static inline int sd_read_r7(void)
+static inline regtype_t sd_read_r7(void)
 {
   /* same length as r3 */
   return sd_read_r3();
@@ -245,7 +258,7 @@ static int sd_read_csd(void)
   return 0;
 }
 
-static int sd_write_csd(void)
+static regtype_t sd_write_csd(void)
 {
   sd_make_cmd(0x1c, 0x00, 0x00, 0x00, 0x00, 0xff);
   sd_write_cmd();
@@ -253,11 +266,11 @@ static int sd_write_csd(void)
   return 0;
 }
 
-static int sd_setup(uint8_t is_ronly)
+static regtype_t sd_setup(uint8_t is_ronly)
 {
   /* sd initialization sequence */
 
-  uint8_t i;
+  uregtype_t i;
 
   spi_setup_master();
 
