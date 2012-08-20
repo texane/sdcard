@@ -169,6 +169,7 @@ static uint8_t sd_cmd_buf[SD_CMD_SIZE];
 
 #define SD_INFO_V2 (1 << 0)
 #define SD_INFO_SDHC (1 << 1)
+#define SD_INFO_WP (1 << 2)
 static uint8_t sd_info = 0;
 
 static inline void sd_make_cmd
@@ -235,7 +236,24 @@ static inline int sd_read_r7(void)
   return sd_read_r3();
 }
 
-static int sd_setup(void)
+static int sd_read_csd(void)
+{
+  /* read application card specific data */
+  sd_make_cmd(0x09, 0x00, 0x00, 0x00, 0x00, 0xff);
+  sd_write_cmd();
+  if ((sd_read_r1() == -1) || sd_cmd_buf[0]) return -1;
+  return 0;
+}
+
+static int sd_write_csd(void)
+{
+  sd_make_cmd(0x1c, 0x00, 0x00, 0x00, 0x00, 0xff);
+  sd_write_cmd();
+  if ((sd_read_r1() == -1) || sd_cmd_buf[0]) return -1;
+  return 0;
+}
+
+static int sd_setup(uint8_t is_ronly)
 {
   /* sd initialization sequence */
 
@@ -321,6 +339,16 @@ static int sd_setup(void)
     if (sd_cmd_buf[4] & (1 << 6)) sd_info |= SD_INFO_SDHC;
   }
 
+  /* initialization sequence done, data transfer mode. */
+
+  /* TODO: cache card infos */
+  if (sd_read_csd() == -1) { PRINT_FAIL(); return -1; }
+
+  /* TODO: disable wp, if supported and is_ronly == 0 */
+  if ((sd_info & SD_INFO_WP) && (is_ronly == 0))
+  {
+  }
+
   return 0;
 }
 
@@ -370,7 +398,7 @@ int main(void)
 
   uart_write_string("hi\r\n");
 
-  if (sd_setup() == -1)
+  if (sd_setup(1) == -1)
   {
     uart_write_string("sd_setup() == -1\r\n");
   }
