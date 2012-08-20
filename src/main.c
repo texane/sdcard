@@ -137,12 +137,6 @@ static inline void spi_write_uint8(uint8_t x)
   while ((SPSR & (1 << SPIF)) == 0) ;
 }
 
-static void wait(void)
-{
-  volatile uint16_t i;
-  for (i = 0; i < 1000; ++i) __asm__ __volatile__ ("nop\n\t");
-}
-
 static void spi_write(const uint8_t* s, uint8_t len)
 {
   for (; len; --len, ++s) spi_write_uint8(*s);
@@ -174,8 +168,7 @@ static void spi_read(uint8_t* s, uint8_t len)
 static uint8_t sd_cmd_buf[SD_CMD_SIZE];
 
 #define SD_INFO_V2 (1 << 0)
-#define SD_INFO_HCS (1 << 1)
-#define SD_INFO_CCS (1 << 2)
+#define SD_INFO_SDHC (1 << 1)
 static uint8_t sd_info = 0;
 
 static inline void sd_make_cmd
@@ -227,13 +220,19 @@ static int sd_read_r1(void)
   return -1;
 }
 
-static int sd_read_r7(void)
+static int sd_read_r3(void)
 {
   if (sd_read_r1() == -1) return -1;
   /* illegal command, dont read remaining bytes */
   if (sd_cmd_buf[0] & (1 << 2)) return 0;
   spi_read(sd_cmd_buf + 1, 4);
   return 0;
+}
+
+static inline int sd_read_r7(void)
+{
+  /* same length as r3 */
+  return sd_read_r7();
 }
 
 static int sd_setup(void)
@@ -257,8 +256,8 @@ static int sd_setup(void)
 
     if (sd_read_r1() != -1)
     {
-      /* idle state */
-      if (sd_cmd_buf[0] & (1 << 1)) break ;
+      /* wait for in_idle_state == 1 */
+      if (sd_cmd_buf[0] & (1 << 0)) break ;
     }
   }
   if (i == 0xff) { PRINT_FAIL(); return -1; }
@@ -293,29 +292,33 @@ static int sd_setup(void)
     sd_info |= SD_INFO_V2;
   }
 
-  /* cmd58 (read ocr) for voltages */
+  /* cmd58 (read ocr operation condition register) for voltages */
+  sd_make_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
+  sd_write_cmd();
+  if (sd_read_r3()) { PRINT_FAIL(); return -1; }
+  /* accept 3.3v - 3.6v */
+  if ((sd_cmd_buf[3] >> 4) == 0) { PRINT_FAIL(); return -1; }
 
-  /* acmd41 (send_op_cond, busy, in_idle_state) */
+  /* acmd41, wait for in_idle_state */
   while (1)
   {
-    sd_make_cmd(0x41, a, b, c, d, 0xff);
-
-    /* test hcs flag */
-    if (sd_info & SD_INFO_V2) sd_cmd_buf[] |= 1 << ;
-
+    sd_make_cmd(0x29, 0x00, 0x00, 0x00, 0x00, 0xff);
+    /* enable sdhc is v2 */
+    if (sd_info & SD_INFO_V2) sd_cmd_buf[4] |= 1 << 7;
     sd_write_cmd();
-
-    sd_read_rX();
-
-    if (ocr.busy) break ;
+    if (sd_read_r1() == -1) { PRINT_FAIL(); return -1; }
+    /* wait for in_idle_state == 0 */
+    if ((sd_cmd_buf[0] & (1 << 0)) == 0) break ;
   }
 
+  /* get sdhc status */
   if (sd_info & SD_INFO_V2)
   {
-    if (ocr & hcs_bit) sd_info |= SD_INFO_HCS;
-
     /* cmd58 (get ccs) */
-    if (ccs) sd_info |= SD_INFO_CCS;
+    sd_make_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
+    sd_write_cmd();
+    if (sd_read_r3()) { PRINT_FAIL(); return -1; }
+    if (sd_cmd_buf[4] & (1 << 6)) sd_info |= SD_INFO_SDHC;
   }
 
   return 0;
