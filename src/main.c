@@ -232,7 +232,7 @@ static int sd_read_r3(void)
 static inline int sd_read_r7(void)
 {
   /* same length as r3 */
-  return sd_read_r7();
+  return sd_read_r3();
 }
 
 static int sd_setup(void)
