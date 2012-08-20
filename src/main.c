@@ -213,11 +213,28 @@ static inline void sd_ss_low(void)
   PORTB &= ~(1 << 2);
 }
 
+static inline void sd_wait_not_busy(void)
+{
+  /* TODO: timeout */
+
+  uint8_t x;
+
+  while (1)
+  {
+    spi_read_uint8(&x);
+    if (x == 0xff) break ;
+  }
+}
+
 static inline void sd_write_cmd(void)
 {
   /* select the slave, write command */
   sd_ss_high();
   sd_ss_low();
+
+  /* wont work otherwise */
+  sd_wait_not_busy();
+
   spi_write(sd_cmd_buf, SD_CMD_SIZE);
 }
 
@@ -261,6 +278,7 @@ static int sd_read_csd(void)
   return 0;
 }
 
+__attribute__((unused))
 static regtype_t sd_write_csd(void)
 {
   sd_make_cmd(0x1c, 0x00, 0x00, 0x00, 0x00, 0xff);
@@ -314,7 +332,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
   {
     /* sd version 1 */
     /* check for other errors */
-    if (sd_cmd_buf[0] & ~(1 << 2)) { PRINT_FAIL(); return -1; }
+    /* if (sd_cmd_buf[0] & ~(1 << 2)) { PRINT_FAIL(); return -1; } */
   }
   else
   {
@@ -326,24 +344,46 @@ static regtype_t sd_setup(uint8_t is_ronly)
     sd_info |= SD_INFO_V2;
   }
 
+#if 0 /* fixme: optionnal, but should work */
   /* cmd58 (read ocr operation condition register) for voltages */
   sd_make_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
   sd_write_cmd();
   if (sd_read_r3()) { PRINT_FAIL(); return -1; }
   /* accept 3.3v - 3.6v */
+  uart_write_hex(sd_cmd_buf, 5);
+  uart_write_string("\r\n");
   if ((sd_cmd_buf[3] >> 4) == 0) { PRINT_FAIL(); return -1; }
+#endif
 
-  /* acmd41, wait for in_idle_state */
+  PRINT_PASS();
+
+  /* acmd41, wait for in_idle_state == 0 */
   while (1)
   {
+    /* acmd commands are preceded by cmd55 */
+    sd_make_cmd(0x37, 0x00, 0x00, 0x00, 0x00, 0xff);
+    sd_write_cmd();
+    if (sd_read_r1()) { PRINT_FAIL(); return -1; }
+
+    uart_write_string("cmd55: ");
+    uart_write_hex(sd_cmd_buf, 1);
+    uart_write_string("\r\n");
+
     sd_make_cmd(0x29, 0x00, 0x00, 0x00, 0x00, 0xff);
     /* enable sdhc is v2 */
-    if (sd_info & SD_INFO_V2) sd_cmd_buf[4] |= 1 << 7;
+    if (sd_info & SD_INFO_V2) sd_cmd_buf[1] |= 1 << 6;
     sd_write_cmd();
-    if (sd_read_r1() == -1) { PRINT_FAIL(); return -1; }
+    if (sd_read_r1()) { PRINT_FAIL(); return -1; }
+
+    uart_write_string("acmd41: ");
+    uart_write_hex(sd_cmd_buf, 1);
+    uart_write_string("\r\n");
+
     /* wait for in_idle_state == 0 */
     if ((sd_cmd_buf[0] & (1 << 0)) == 0) break ;
   }
+
+  PRINT_PASS();
 
   /* get sdhc status */
   if (sd_info & SD_INFO_V2)
@@ -352,7 +392,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
     sd_make_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
     sd_write_cmd();
     if (sd_read_r3()) { PRINT_FAIL(); return -1; }
-    if (sd_cmd_buf[4] & (1 << 6)) sd_info |= SD_INFO_SDHC;
+    if ((sd_cmd_buf[1] & 0xc0) == 0xc0) sd_info |= SD_INFO_SDHC;
   }
 
   /* initialization sequence done, data transfer mode. */
