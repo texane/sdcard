@@ -184,9 +184,12 @@ static uint8_t sd_cmd_buf[SD_CMD_SIZE];
 #define SD_INFO_WP (1 << 2)
 static uint8_t sd_info = 0;
 
-static inline void sd_make_cmd
+__attribute__((always_inline))
+static void sd_make_cmd
 (uint8_t op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t crc)
 {
+  /* TODO: sd_make_cmdXX to reduce code size */
+
   /* start bit, command index */
   sd_cmd_buf[0] = (1 << 6) | op;
 
