@@ -163,10 +163,33 @@ static inline uint8_t spi_read_uint8(void)
   return SPDR;
 }
 
-static void spi_read(uint8_t* s, uint8_t len)
+static void spi_read(uint8_t* s, regtype_t len)
 {
   for (; len; --len, ++s) *s = spi_read_uint8();
 }
+
+/* should be done for all 8 bits mcus */
+#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328__)
+
+static inline void spi_read_512(uint8_t* s)
+{
+  /* spi_read len argument is uint8_t, too small for 512.
+     we do not want to use a uint16_t on 8 bit mcus.
+   */
+
+  spi_read(s + 0x000, 0xff);
+  spi_read(s + 0x0ff, 0xff);
+  spi_read(s + 0x1fe, 0x02);
+}
+
+#else /* non 8 bits mcus */
+
+static inline void spi_read_512(uint8_t* s)
+{
+  return spi_read(s, 512);
+}
+
+#endif /* 8 bits mcus */
 
 
 /* sdcard */
@@ -265,14 +288,6 @@ static inline regtype_t sd_read_r7(void)
   return sd_read_r3();
 }
 
-static inline void sd_read_block(void) 
-{
-  /* read a 512 bytes data block in sd_data_buf */
-  spi_read(sd_data_buf + 0x000, 0xff);
-  spi_read(sd_data_buf + 0x0ff, 0xff);
-  spi_read(sd_data_buf + 0x1fe, 0x02);
-}
-
 static int sd_read_csd(void)
 {
   /* in spi mode, the card responds with a response
@@ -288,8 +303,8 @@ static int sd_read_csd(void)
   /* read response token */
   while (spi_read_uint8() != 0xfe) ;
 
-  /* read a data block */
-  sd_read_block();
+  /* read the data block */
+  spi_read_512(sd_data_buf);
 
   /* skip 2 bytes crc */
   spi_read_uint8();
