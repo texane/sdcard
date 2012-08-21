@@ -182,7 +182,7 @@ static inline void spi_read_512(uint8_t* s)
   spi_read(s + 0x1fe, 0x02);
 }
 
-static inline void spi_write_512(uint8_t* s)
+static inline void spi_write_512(const uint8_t* s)
 {
   spi_write(s + 0x000, 0xff);
   spi_write(s + 0x0ff, 0xff);
@@ -196,7 +196,7 @@ static inline void spi_read_512(uint8_t* s)
   return spi_read(s, 512);
 }
 
-static inline void spi_write_512(uint8_t* s)
+static inline void spi_write_512(const uint8_t* s)
 {
   return spi_write(s, 512);
 }
