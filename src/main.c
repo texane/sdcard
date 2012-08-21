@@ -672,43 +672,6 @@ static regtype_t sd_setup(void)
 
 int main(void)
 {
-  /* delay loop */
-  {
-    volatile uint16_t i;
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-    for (i = 0; i < 10000; ++i) __asm__ __volatile__ ("nop\n\t");
-  }
-
   uart_setup();
 
   uart_write_string("hi\r\n");
@@ -716,10 +679,38 @@ int main(void)
   if (sd_setup() == -1)
   {
     uart_write_string("sd_setup() == -1\r\n");
+    return -1;
   }
-  else
+
+  /* write unit test */
   {
+    regtype_t i;
+    sd_read_block(0x10);
+    for (i = 0; i < ('z' - 'a'); ++i) sd_block_buf[0x2a + i] = 'a' + i;
+    sd_write_block(0x10);
+  }
+
+  /* read unit test */
+  {
+    static const uint32_t bids[] = { 0x00, 0x10, 0x2a };
+
+    regtype_t i;
+
     uart_write_string("sd_setup() == 0\r\n");
+
+    for (i = 0; i < (sizeof(bids) / sizeof(bids[0])); ++i)
+    {
+      sd_read_block(bids[i]);
+      uart_write_hex(sd_block_buf + 0x00, 16);
+      uart_write_string("\r\n");
+      uart_write_hex(sd_block_buf + 0x10, 16);
+      uart_write_string("\r\n");
+      uart_write_hex(sd_block_buf + 0x20, 16);
+      uart_write_string("\r\n");
+      uart_write_hex(sd_block_buf + 0x30, 16);
+      uart_write_string("\r\n");
+      uart_write_string("\r\n");
+    }
   }
 
   return 0;
