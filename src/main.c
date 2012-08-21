@@ -298,6 +298,95 @@ static int sd_read_csd(void)
   return 0;
 }
 
+static void sd_print_csd(void)
+{
+  struct csd_v1
+  {
+    /* byte 0 */
+    unsigned reserved1 : 6;
+    unsigned csd_ver : 2;
+    /* byte 1 */
+    uint8_t taac;
+    /* byte 2 */
+    uint8_t nsac;
+    /* byte 3 */
+    uint8_t tran_speed;
+    /* byte 4 */
+    uint8_t ccc_high;
+    /* byte 5 */
+    unsigned read_bl_len : 4;
+    unsigned ccc_low : 4;
+    /* byte 6 */
+    unsigned c_size_high : 2;
+    unsigned reserved2 : 2;
+    unsigned dsr_imp : 1;
+    unsigned read_blk_misalign :1;
+    unsigned write_blk_misalign : 1;
+    unsigned read_bl_partial : 1;
+    /* byte 7 */
+    uint8_t c_size_mid;
+    /* byte 8 */
+    unsigned vdd_r_curr_max : 3;
+    unsigned vdd_r_curr_min : 3;
+    unsigned c_size_low :2;
+    /* byte 9 */
+    unsigned c_size_mult_high : 2;
+    unsigned vdd_w_cur_max : 3;
+    unsigned vdd_w_curr_min : 3;
+    /* byte 10 */
+    unsigned sector_size_high : 6;
+    unsigned erase_blk_en : 1;
+    unsigned c_size_mult_low : 1;
+    /* byte 11 */
+    unsigned wp_grp_size : 7;
+    unsigned sector_size_low : 1;
+    /* byte 12 */
+    unsigned write_bl_len_high : 2;
+    unsigned r2w_factor : 3;
+    unsigned reserved3 : 2;
+    unsigned wp_grp_enable : 1;
+    /* byte 13 */
+    unsigned reserved4 : 5;
+    unsigned write_partial : 1;
+    unsigned write_bl_len_low : 2;
+    /* byte 14 */
+    unsigned reserved5: 2;
+    unsigned file_format : 2;
+    unsigned tmp_write_protect : 1;
+    unsigned perm_write_protect : 1;
+    unsigned copy : 1;
+    unsigned file_format_grp : 1;
+    /* byte 15 */
+    unsigned always1 : 1;
+    unsigned crc : 7;
+  } __attribute__((packed)) *csd = (struct csd_v1*)sd_data_buf;
+
+  uint8_t x;
+
+  uart_write_string("csd: ");
+  uart_write_hex(sd_data_buf, 16);
+  uart_write_string("\r\n");
+
+  uart_write_string("vers: ");
+  x = csd->csd_ver;
+  uart_write_hex(&x, 1);
+  uart_write_string("\r\n");
+
+  x = csd->read_bl_len;
+  uart_write_string("bl_len: ");
+  uart_write_hex(&x, 1);
+  uart_write_string("\r\n");
+
+  uart_write_string("csize: ");
+  x = csd->c_size_high;
+  uart_write_hex(&x, 1);
+  x = csd->c_size_mid;
+  uart_write_hex(&x, 1);
+  x = csd->c_size_low;
+  uart_write_hex(&x, 1);
+  uart_write_string("\r\n");
+}
+
 __attribute__((unused))
 static regtype_t sd_write_csd(void)
 {
@@ -427,86 +516,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
 
   /* TODO: cache card infos */
   if (sd_read_csd()) { PRINT_FAIL(); return -1; }
-
-  {
-    struct CSDV1 {
-      // byte 0
-      unsigned reserved1 : 6;
-      unsigned csd_ver : 2;
-      // byte 1
-      uint8_t taac;
-      // byte 2
-      uint8_t nsac;
-      // byte 3
-      uint8_t tran_speed;
-      // byte 4
-      uint8_t ccc_high;
-      // byte 5
-      unsigned read_bl_len : 4;
-      unsigned ccc_low : 4;
-      // byte 6
-      unsigned c_size_high : 2;
-      unsigned reserved2 : 2;
-      unsigned dsr_imp : 1;
-      unsigned read_blk_misalign :1;
-      unsigned write_blk_misalign : 1;
-      unsigned read_bl_partial : 1;
-      // byte 7
-      uint8_t c_size_mid;
-      // byte 8
-      unsigned vdd_r_curr_max : 3;
-      unsigned vdd_r_curr_min : 3;
-      unsigned c_size_low :2;
-      // byte 9
-      unsigned c_size_mult_high : 2;
-      unsigned vdd_w_cur_max : 3;
-      unsigned vdd_w_curr_min : 3;
-      // byte 10
-      unsigned sector_size_high : 6;
-      unsigned erase_blk_en : 1;
-      unsigned c_size_mult_low : 1;
-      // byte 11
-      unsigned wp_grp_size : 7;
-      unsigned sector_size_low : 1;
-      // byte 12
-      unsigned write_bl_len_high : 2;
-      unsigned r2w_factor : 3;
-      unsigned reserved3 : 2;
-      unsigned wp_grp_enable : 1;
-      // byte 13
-      unsigned reserved4 : 5;
-      unsigned write_partial : 1;
-      unsigned write_bl_len_low : 2;
-      // byte 14
-      unsigned reserved5: 2;
-      unsigned file_format : 2;
-      unsigned tmp_write_protect : 1;
-      unsigned perm_write_protect : 1;
-      unsigned copy : 1;
-      unsigned file_format_grp : 1;
-      // byte 15
-      unsigned always1 : 1;
-      unsigned crc : 7;
-    } *csd = (struct CSDV1*)sd_data_buf;
-
-    uart_write_string("csd: ");
-    uart_write_hex(sd_data_buf, 16);
-    uart_write_string("\r\n");
-
-    uint8_t x = csd->read_bl_len;
-    uart_write_string("bl_len: ");
-    uart_write_hex(&x, 1);
-    uart_write_string("\r\n");
-
-    uart_write_string("csize: ");
-    x = csd->c_size_high;
-    uart_write_hex(&x, 1);
-    x = csd->c_size_mid;
-    uart_write_hex(&x, 1);
-    x = csd->c_size_low;
-    uart_write_hex(&x, 1);
-    uart_write_string("\r\n");
-  }
+  sd_print_csd();
 
   /* TODO: disable wp, if supported and is_ronly == 0 */
   if ((sd_info & SD_INFO_WP) && (is_ronly == 0))
