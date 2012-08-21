@@ -222,35 +222,6 @@ static uint8_t sd_block_buf[SD_BLOCK_SIZE];
 #define SD_INFO_WP (1 << 2)
 static uint8_t sd_info = 0;
 
-__attribute__((always_inline))
-static void sd_make_cmd
-(uint8_t op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t crc)
-{
-  /* TODO: sd_make_cmdXX to reduce code size */
-
-  /* start bit, command index */
-  sd_cmd_buf[0] = (1 << 6) | op;
-
-  /* argument */
-  sd_cmd_buf[1] = a;
-  sd_cmd_buf[2] = b;
-  sd_cmd_buf[3] = c;
-  sd_cmd_buf[4] = d;
-
-  /* crc, stop bit */
-  sd_cmd_buf[5] = (crc << 1) | 1;
-}
-
-static inline void sd_make_cmd_32(uint8_t op, uint32_t x, uint8_t crc)
-{
-  const uint8_t a = (x >> 24) & 0xff;
-  const uint8_t b = (x >> 16) & 0xff;
-  const uint8_t c = (x >>  8) & 0xff;
-  const uint8_t d = (x >>  0) & 0xff;
-
-  sd_make_cmd(op, a, b, c, d, crc);
-}
-
 static inline void sd_ss_high(void)
 {
   PORTB |= 1 << 2;
@@ -267,7 +238,8 @@ static inline void sd_wait_not_busy(void)
   while (spi_read_uint8() != 0xff) ;
 }
 
-static inline void sd_write_cmd(void)
+static void sd_write_cmd
+(uint8_t op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t crc)
 {
   /* select the slave, write command */
   sd_ss_high();
@@ -276,7 +248,27 @@ static inline void sd_write_cmd(void)
   /* wont work otherwise */
   sd_wait_not_busy();
 
-  spi_write(sd_cmd_buf, SD_CMD_SIZE);
+  /* start bit, command index */
+  spi_write_uint8((1 << 6) | op);
+
+  /* argument */
+  spi_write_uint8(a);
+  spi_write_uint8(b);
+  spi_write_uint8(c);
+  spi_write_uint8(d);
+
+  /* crc, stop bit */
+  spi_write_uint8((crc << 1) | 1);
+}
+
+static inline void sd_write_cmd_32(uint8_t op, uint32_t x, uint8_t crc)
+{
+  const uint8_t a = (x >> 24) & 0xff;
+  const uint8_t b = (x >> 16) & 0xff;
+  const uint8_t c = (x >>  8) & 0xff;
+  const uint8_t d = (x >>  0) & 0xff;
+
+  sd_write_cmd(op, a, b, c, d, crc);
 }
 
 static regtype_t sd_read_r1(void)
@@ -336,8 +328,7 @@ __attribute__((unused)) static regtype_t sd_read_csd(void)
   /* TODO: redundant with sd_read_block */
 
   /* read application card specific data */
-  sd_make_cmd(0x09, 0x00, 0x00, 0x00, 0x00, 0xff);
-  sd_write_cmd();
+  sd_write_cmd(0x09, 0x00, 0x00, 0x00, 0x00, 0xff);
   if (sd_read_r1() || sd_cmd_buf[0]) return -1;
 
   /* read response token */
@@ -445,8 +436,7 @@ __attribute__((unused)) static void sd_print_csd(void)
 __attribute__((unused))
 static regtype_t sd_write_csd(void)
 {
-  sd_make_cmd(0x1c, 0x00, 0x00, 0x00, 0x00, 0xff);
-  sd_write_cmd();
+  sd_write_cmd(0x1c, 0x00, 0x00, 0x00, 0x00, 0xff);
   if (sd_read_r1() || sd_cmd_buf[0]) return -1;
   return 0;
 }
@@ -464,8 +454,7 @@ static regtype_t sd_read_block(uint32_t bid)
   const uint32_t baddr = sd_bid_to_baddr(bid);
 
   /* cmd17, read single block */
-  sd_make_cmd_32(0x11, baddr, 0xff);
-  sd_write_cmd();
+  sd_write_cmd_32(0x11, baddr, 0xff);
   if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
 
   /* response token */
@@ -491,19 +480,16 @@ static regtype_t sd_erase(uint32_t bid, uint32_t n)
 
   /* cmd32, erase_wr_blk_start_addr */
   baddr = sd_bid_to_baddr(bid);
-  sd_make_cmd_32(0x20, baddr, 0xff);
-  sd_write_cmd();
+  sd_write_cmd_32(0x20, baddr, 0xff);
   if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
 
   /* cmd33, erase_wr_blk_start_addr */
   baddr = sd_bid_to_baddr(bid + n - 1);
-  sd_make_cmd_32(0x21, baddr, 0xff);
-  sd_write_cmd();
+  sd_write_cmd_32(0x21, baddr, 0xff);
   if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
 
   /* cmd38, erase */
-  sd_make_cmd(0x26, 0x00, 0x00, 0x00, 0x00, 0xff);
-  sd_write_cmd();
+  sd_write_cmd(0x26, 0x00, 0x00, 0x00, 0x00, 0xff);
   if (sd_read_r1b() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
 
   /* TODO: check status */
@@ -519,8 +505,7 @@ static regtype_t sd_write_block(uint32_t bid)
   const uint32_t baddr = sd_bid_to_baddr(bid);
 
   /* cmd24, write_block */
-  sd_make_cmd_32(0x18, baddr, 0xff);
-  sd_write_cmd();
+  sd_write_cmd_32(0x18, baddr, 0xff);
   if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
 
   /* start block token */
@@ -540,8 +525,7 @@ static regtype_t sd_write_block(uint32_t bid)
   while (spi_read_uint8() == 0x00) ;
 
   /* cmd13, send_status */
-  sd_make_cmd(0x0d, 0x00, 0x00, 0x00, 0x00, 0xff);
-  sd_write_cmd();
+  sd_write_cmd(0x0d, 0x00, 0x00, 0x00, 0x00, 0xff);
   if (sd_read_r2() || sd_cmd_buf[0] || sd_cmd_buf[1]) 
   {
     PRINT_FAIL();
@@ -568,9 +552,7 @@ static regtype_t sd_setup(void)
   /* cs low, send cmd0 (reset), check error and idle state */
   for (i = 0; i < 0xff; ++i)
   {
-    sd_make_cmd(0x00, 0x00, 0x00, 0x00, 0x00, 0x4a);
-    sd_write_cmd();
-
+    sd_write_cmd(0x00, 0x00, 0x00, 0x00, 0x00, 0x4a);
     if (sd_read_r1() != -1)
     {
       /* wait for in_idle_state == 1 */
@@ -584,8 +566,7 @@ static regtype_t sd_setup(void)
   uart_write_string("\r\n");
 
   /* cmd8 (send_if_cond) */
-  sd_make_cmd(0x08, 0x00, 0x00, 0x01, 0xaa, 0x43);
-  sd_write_cmd();
+  sd_write_cmd(0x08, 0x00, 0x00, 0x01, 0xaa, 0x43);
   /* card echos back voltage and check pattern */
   if (sd_read_r7()) { PRINT_FAIL(); return -1; }
 
@@ -611,8 +592,7 @@ static regtype_t sd_setup(void)
 
 #if 0 /* fixme: optionnal, but should work */
   /* cmd58 (read ocr operation condition register) for voltages */
-  sd_make_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
-  sd_write_cmd();
+  sd_write_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
   if (sd_read_r3()) { PRINT_FAIL(); return -1; }
   /* accept 3.3v - 3.6v */
   uart_write_hex(sd_cmd_buf, 5);
@@ -630,16 +610,14 @@ static regtype_t sd_setup(void)
   while (1)
   {
     /* acmd commands are preceded by cmd55 */
-    sd_make_cmd(0x37, 0x00, 0x00, 0x00, 0x00, 0xff);
-    sd_write_cmd();
+    sd_write_cmd(0x37, 0x00, 0x00, 0x00, 0x00, 0xff);
     if (sd_read_r1()) { PRINT_FAIL(); return -1; }
 
     uart_write_string("cmd55: ");
     uart_write_hex(sd_cmd_buf, 1);
     uart_write_string("\r\n");
 
-    sd_make_cmd(0x29, arg, 0x00, 0x00, 0x00, 0xff);
-    sd_write_cmd();
+    sd_write_cmd(0x29, arg, 0x00, 0x00, 0x00, 0xff);
     if (sd_read_r1()) { PRINT_FAIL(); return -1; }
 
     uart_write_string("acmd41: ");
@@ -656,8 +634,7 @@ static regtype_t sd_setup(void)
   if (sd_info & SD_INFO_V2)
   {
     /* cmd58 (get ccs) */
-    sd_make_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
-    sd_write_cmd();
+    sd_write_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
     if (sd_read_r3()) { PRINT_FAIL(); return -1; }
     if ((sd_cmd_buf[1] & 0xc0) == 0xc0) sd_info |= SD_INFO_SDHC;
   }
@@ -667,8 +644,7 @@ static regtype_t sd_setup(void)
   /* set block length to 512 if not sdhc */
   if ((sd_info & SD_INFO_SDHC) == 0)
   {
-    sd_make_cmd(0x10, 0x00, 0x00, 0x02, 0x00, 0xff);
-    sd_write_cmd();
+    sd_write_cmd(0x10, 0x00, 0x00, 0x02, 0x00, 0xff);
     if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
   }
 
@@ -681,8 +657,7 @@ static regtype_t sd_setup(void)
   if ((sd_info & SD_INFO_WP) && (is_ronly == 0))
   {
     /* cmd29, clear_write_prot */
-    sd_make_cmd(0x1d, 0x00, 0x00, 0x00, 0x00, 0xff);
-    sd_write_cmd();
+    sd_write_cmd(0x1d, 0x00, 0x00, 0x00, 0x00, 0xff);
     if (sd_read_r1b() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
   }
 #endif /* unused */
