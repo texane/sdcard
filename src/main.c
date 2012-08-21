@@ -241,12 +241,14 @@ static inline void sd_wait_not_busy(void)
 static void sd_write_cmd
 (uint8_t op, uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t crc)
 {
-  /* select the slave, write command */
+  /* select the slave */
   sd_ss_high();
   sd_ss_low();
 
   /* wont work otherwise */
   sd_wait_not_busy();
+
+  /* write the 6 bytes command */
 
   /* start bit, command index */
   spi_write_uint8((1 << 6) | op);
