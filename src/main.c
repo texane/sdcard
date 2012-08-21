@@ -554,7 +554,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
   /* sd initialization sequence */
 
   uregtype_t i;
-  uint8_t x;
+  uint8_t arg;
 
   spi_setup_master();
 
@@ -623,7 +623,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
   /* acmd41, wait for in_idle_state == 0 */
 
   /* enable sdhc is v2 */
-  x = (sd_info & SD_INFO_V2) ? (1 << 6) : 0;
+  arg = (sd_info & SD_INFO_V2) ? (1 << 6) : 0;
 
   while (1)
   {
@@ -636,7 +636,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
     uart_write_hex(sd_cmd_buf, 1);
     uart_write_string("\r\n");
 
-    sd_make_cmd(0x29, x, 0x00, 0x00, 0x00, 0xff);
+    sd_make_cmd(0x29, arg, 0x00, 0x00, 0x00, 0xff);
     sd_write_cmd();
     if (sd_read_r1()) { PRINT_FAIL(); return -1; }
 
