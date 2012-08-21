@@ -1,6 +1,5 @@
 [ todo ]
-finalize initialization phase
-increase spi frequencies
+increase spi frequency
 see more in specs about the timings
 
 [ source code ]
