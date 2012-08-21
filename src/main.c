@@ -523,28 +523,30 @@ static regtype_t sd_write_block(uint32_t bid)
   sd_write_cmd();
   if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
 
-  /* response token */
-  while (spi_read_uint8() != 0xfe) ;
-
   /* start block token */
-  spi_write_uint8(0xaa);
+  spi_write_uint8(0xfe);
 
   /* data block */
   spi_write_512(sd_block_buf);
 
+  /* dummy crc */
+  spi_write_uint8(0xff);
+  spi_write_uint8(0xff);
+
   /* data response */
+  if ((spi_read_uint8() & 0x1f) != 0x05) { PRINT_FAIL(); return -1; }
 
   /* busy signal */
   while (spi_read_uint8() == 0x00) ;
 
-  /* acmd13, send_status */
-  sd_make_cmd(0x37, 0x00, 0x00, 0x00, 0x00, 0xff);
-  sd_write_cmd();
-  if (sd_read_r1()) { PRINT_FAIL(); return -1; }
+  /* cmd13, send_status */
   sd_make_cmd(0x0d, 0x00, 0x00, 0x00, 0x00, 0xff);
   sd_write_cmd();
-  if (sd_read_r2() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
-  if (sd_cmd_buf[1]) { PRINT_FAIL(); return -1; }
+  if (sd_read_r2() || sd_cmd_buf[0] || sd_cmd_buf[1]) 
+  {
+    PRINT_FAIL();
+    return -1;
+  }
 
   return 0;
 }
