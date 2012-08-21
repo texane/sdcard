@@ -9,6 +9,7 @@
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328__)
 typedef int8_t regtype_t;
 typedef uint8_t uregtype_t;
+#define CONFIG_SIZEOF_REGTYPE 1
 #else
 # error "unknown architecture"
 #endif
@@ -168,9 +169,7 @@ static void spi_read(uint8_t* s, regtype_t len)
   for (; len; --len, ++s) *s = spi_read_uint8();
 }
 
-/* should be done for all 8 bits mcus */
-#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega328__)
-
+#if (CONFIG_SIZEOF_REGTYPE == 1)
 static inline void spi_read_512(uint8_t* s)
 {
   /* spi_read len argument is uint8_t, too small for 512.
@@ -181,15 +180,12 @@ static inline void spi_read_512(uint8_t* s)
   spi_read(s + 0x0ff, 0xff);
   spi_read(s + 0x1fe, 0x02);
 }
-
 #else /* non 8 bits mcus */
-
 static inline void spi_read_512(uint8_t* s)
 {
   return spi_read(s, 512);
 }
-
-#endif /* 8 bits mcus */
+#endif /* CONFIG_REGTYPE_8 */
 
 
 /* sdcard */
