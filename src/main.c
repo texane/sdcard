@@ -326,7 +326,7 @@ static inline regtype_t sd_read_r7(void)
   return sd_read_r3();
 }
 
-static regtype_t sd_read_csd(void)
+__attribute__((unused)) static regtype_t sd_read_csd(void)
 {
   /* in spi mode, the card responds with a response
      token followed by a data block of 16 bytes and
@@ -353,7 +353,7 @@ static regtype_t sd_read_csd(void)
   return 0;
 }
 
-static void sd_print_csd(void)
+__attribute__((unused)) static void sd_print_csd(void)
 {
   struct csd_v1
   {
@@ -549,7 +549,7 @@ static regtype_t sd_write_block(uint32_t bid)
   return 0;
 }
 
-static regtype_t sd_setup(uint8_t is_ronly)
+static regtype_t sd_setup(void)
 {
   /* sd initialization sequence */
 
@@ -670,6 +670,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
     if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
   }
 
+#if 0 /* unused */
   /* TODO: cache card infos */
   if (sd_read_csd()) { PRINT_FAIL(); return -1; }
   sd_print_csd();
@@ -677,7 +678,12 @@ static regtype_t sd_setup(uint8_t is_ronly)
   /* TODO: disable wp, if supported and is_ronly == 0 */
   if ((sd_info & SD_INFO_WP) && (is_ronly == 0))
   {
+    /* cmd29, clear_write_prot */
+    sd_make_cmd(0x1d, 0x00, 0x00, 0x00, 0x00, 0xff);
+    sd_write_cmd();
+    if (sd_read_r1b() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
   }
+#endif /* unused */
 
   return 0;
 }
@@ -728,7 +734,7 @@ int main(void)
 
   uart_write_string("hi\r\n");
 
-  if (sd_setup(1) == -1)
+  if (sd_setup() == -1)
   {
     uart_write_string("sd_setup() == -1\r\n");
   }
