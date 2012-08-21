@@ -170,6 +170,7 @@ static void spi_read(uint8_t* s, regtype_t len)
 }
 
 #if (CONFIG_SIZEOF_REGTYPE == 1)
+
 static inline void spi_read_512(uint8_t* s)
 {
   /* spi_read len argument is uint8_t, too small for 512.
@@ -180,11 +181,26 @@ static inline void spi_read_512(uint8_t* s)
   spi_read(s + 0x0ff, 0xff);
   spi_read(s + 0x1fe, 0x02);
 }
+
+static inline void spi_write_512(uint8_t* s)
+{
+  spi_write(s + 0x000, 0xff);
+  spi_write(s + 0x0ff, 0xff);
+  spi_write(s + 0x1fe, 0x02);
+}
+
 #else /* non 8 bits mcus */
+
 static inline void spi_read_512(uint8_t* s)
 {
   return spi_read(s, 512);
 }
+
+static inline void spi_write_512(uint8_t* s)
+{
+  return spi_write(s, 512);
+}
+
 #endif /* CONFIG_REGTYPE_8 */
 
 
@@ -198,8 +214,8 @@ static inline void spi_read_512(uint8_t* s)
 #define SD_CMD_SIZE 6
 static uint8_t sd_cmd_buf[SD_CMD_SIZE];
 
-#define SD_DATA_SIZE 512
-static uint8_t sd_data_buf[SD_DATA_SIZE];
+#define SD_BLOCK_SIZE 512
+static uint8_t sd_block_buf[SD_BLOCK_SIZE];
 
 #define SD_INFO_V2 (1 << 0)
 #define SD_INFO_SDHC (1 << 1)
@@ -223,6 +239,16 @@ static void sd_make_cmd
 
   /* crc, stop bit */
   sd_cmd_buf[5] = (crc << 1) | 1;
+}
+
+static inline void sd_make_cmd_32(uint8_t op, uint32_t x, uint8_t crc)
+{
+  const uint8_t a = (x >> 24) & 0xff;
+  const uint8_t b = (x >> 16) & 0xff;
+  const uint8_t c = (x >>  8) & 0xff;
+  const uint8_t d = (x >>  0) & 0xff;
+
+  sd_make_cmd(op, a, b, c, d, crc);
 }
 
 static inline void sd_ss_high(void)
@@ -269,6 +295,22 @@ static regtype_t sd_read_r1(void)
   return -1;
 }
 
+static regtype_t sd_read_r1b(void)
+{
+  if (sd_read_r1()) return -1;
+  /* busy signal, wait for non 0 value (card ready) */
+  while (spi_read_uint8() == 0) ;
+  return 0;
+}
+
+static regtype_t sd_read_r2(void)
+{
+  if (sd_read_r1()) return -1;
+  if (sd_cmd_buf[0] & (1 << 2)) return 0;
+  sd_cmd_buf[1] = spi_read_uint8();
+  return 0;
+}
+
 static regtype_t sd_read_r3(void)
 {
   if (sd_read_r1()) return -1;
@@ -284,12 +326,14 @@ static inline regtype_t sd_read_r7(void)
   return sd_read_r3();
 }
 
-static int sd_read_csd(void)
+static regtype_t sd_read_csd(void)
 {
   /* in spi mode, the card responds with a response
      token followed by a data block of 16 bytes and
      a 2 bytes crc.
    */
+
+  /* TODO: redundant with sd_read_block */
 
   /* read application card specific data */
   sd_make_cmd(0x09, 0x00, 0x00, 0x00, 0x00, 0xff);
@@ -300,7 +344,7 @@ static int sd_read_csd(void)
   while (spi_read_uint8() != 0xfe) ;
 
   /* read the data block */
-  spi_read_512(sd_data_buf);
+  spi_read_512(sd_block_buf);
 
   /* skip 2 bytes crc */
   spi_read_uint8();
@@ -370,12 +414,12 @@ static void sd_print_csd(void)
     /* byte 15 */
     unsigned always1 : 1;
     unsigned crc : 7;
-  } __attribute__((packed)) *csd = (struct csd_v1*)sd_data_buf;
+  } __attribute__((packed)) *csd = (struct csd_v1*)sd_block_buf;
 
   uint8_t x;
 
   uart_write_string("csd: ");
-  uart_write_hex(sd_data_buf, 16);
+  uart_write_hex(sd_block_buf, 16);
   uart_write_string("\r\n");
 
   uart_write_string("vers: ");
@@ -407,11 +451,110 @@ static regtype_t sd_write_csd(void)
   return 0;
 }
 
+static inline uint32_t sd_bid_to_baddr(uint32_t bid)
+{
+  return ((sd_info & SD_INFO_SDHC) == 0) ? bid *= 512 : bid;
+}
+
+__attribute__((unused))
+static regtype_t sd_read_block(uint32_t bid)
+{
+  /* block at addr is read in sd_block_buf */
+
+  const uint32_t baddr = sd_bid_to_baddr(bid);
+
+  /* cmd17, read single block */
+  sd_make_cmd_32(0x11, baddr, 0xff);
+  sd_write_cmd();
+  if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+
+  /* response token */
+  while (spi_read_uint8() != 0xfe) ;
+
+  /* data block */
+  spi_read_512(sd_block_buf);
+
+  /* skip 2 bytes crc */
+  spi_read_uint8();
+  spi_read_uint8();
+
+  return 0;
+}
+
+__attribute__((unused))
+static regtype_t sd_erase(uint32_t bid, uint32_t n)
+{
+  /* bid the index of the first block to erase */
+  /* n the block count */
+
+  uint32_t baddr;
+
+  /* cmd32, erase_wr_blk_start_addr */
+  baddr = sd_bid_to_baddr(bid);
+  sd_make_cmd_32(0x20, baddr, 0xff);
+  sd_write_cmd();
+  if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+
+  /* cmd33, erase_wr_blk_start_addr */
+  baddr = sd_bid_to_baddr(bid + n - 1);
+  sd_make_cmd_32(0x21, baddr, 0xff);
+  sd_write_cmd();
+  if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+
+  /* cmd38, erase */
+  sd_make_cmd(0x26, 0x00, 0x00, 0x00, 0x00, 0xff);
+  sd_write_cmd();
+  if (sd_read_r1b() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+
+  /* TODO: check status */
+
+  return 0;
+}
+
+__attribute__((unused))
+static regtype_t sd_write_block(uint32_t bid)
+{
+  /* sd_block_buf is written into block at addr */
+
+  const uint32_t baddr = sd_bid_to_baddr(bid);
+
+  /* cmd24, write_block */
+  sd_make_cmd_32(0x18, baddr, 0xff);
+  sd_write_cmd();
+  if (sd_read_r1() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+
+  /* response token */
+  while (spi_read_uint8() != 0xfe) ;
+
+  /* start block token */
+  spi_write_uint8(0xaa);
+
+  /* data block */
+  spi_write_512(sd_block_buf);
+
+  /* data response */
+
+  /* busy signal */
+  while (spi_read_uint8() == 0x00) ;
+
+  /* acmd13, send_status */
+  sd_make_cmd(0x37, 0x00, 0x00, 0x00, 0x00, 0xff);
+  sd_write_cmd();
+  if (sd_read_r1()) { PRINT_FAIL(); return -1; }
+  sd_make_cmd(0x0d, 0x00, 0x00, 0x00, 0x00, 0xff);
+  sd_write_cmd();
+  if (sd_read_r2() || sd_cmd_buf[0]) { PRINT_FAIL(); return -1; }
+  if (sd_cmd_buf[1]) { PRINT_FAIL(); return -1; }
+
+  return 0;
+}
+
 static regtype_t sd_setup(uint8_t is_ronly)
 {
   /* sd initialization sequence */
 
   uregtype_t i;
+  uint8_t x;
 
   spi_setup_master();
 
@@ -478,6 +621,10 @@ static regtype_t sd_setup(uint8_t is_ronly)
   PRINT_PASS();
 
   /* acmd41, wait for in_idle_state == 0 */
+
+  /* enable sdhc is v2 */
+  x = (sd_info & SD_INFO_V2) ? (1 << 6) : 0;
+
   while (1)
   {
     /* acmd commands are preceded by cmd55 */
@@ -489,9 +636,7 @@ static regtype_t sd_setup(uint8_t is_ronly)
     uart_write_hex(sd_cmd_buf, 1);
     uart_write_string("\r\n");
 
-    sd_make_cmd(0x29, 0x00, 0x00, 0x00, 0x00, 0xff);
-    /* enable sdhc is v2 */
-    if (sd_info & SD_INFO_V2) sd_cmd_buf[1] |= 1 << 6;
+    sd_make_cmd(0x29, x, 0x00, 0x00, 0x00, 0xff);
     sd_write_cmd();
     if (sd_read_r1()) { PRINT_FAIL(); return -1; }
 
