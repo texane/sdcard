@@ -127,7 +127,9 @@ static inline void spi_setup_master(void)
 
 static inline void spi_set_sck_freq(uint8_t x)
 {
-  /* atmega328 specs, table 18.5 */
+  /* x one of SPI_SCK_FREQ_FOSCX */
+  /* where spi sck = fosc / X */
+  /* see atmega328 specs, table 18.5 */
 #define SPI_SCK_FREQ_FOSC2 ((1 << 2) | 0)
 #define SPI_SCK_FREQ_FOSC4 ((0 << 2) | 0)
 #define SPI_SCK_FREQ_FOSC8 ((1 << 2) | 1)
@@ -135,8 +137,12 @@ static inline void spi_set_sck_freq(uint8_t x)
 #define SPI_SCK_FREQ_FOSC32 ((1 << 2) | 2)
 #define SPI_SCK_FREQ_FOSC64 ((0 << 2) | 2)
 #define SPI_SCK_FREQ_FOSC128 ((0 << 2) | 3)
-  SPCR = (1 << SPE) | (1 << MSTR) | (3 << SPR0);
+
+  SPCR &= ~(3 << SPR0);
+  SPCR |= (x & 3) << SPR0;
+
   SPSR &= ~(1 << SPI2X);
+  SPSR |= (((x >> 2) & 1) << SPI2X);
 }
 
 static inline void spi_write_uint8(uint8_t x)
