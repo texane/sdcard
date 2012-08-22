@@ -125,6 +125,20 @@ static inline void spi_setup_master(void)
   SPSR &= ~(1 << SPI2X);
 }
 
+static inline void spi_set_sck_freq(uint8_t x)
+{
+  /* atmega328 specs, table 18.5 */
+#define SPI_SCK_FREQ_FOSC2 ((1 << 2) | 0)
+#define SPI_SCK_FREQ_FOSC4 ((0 << 2) | 0)
+#define SPI_SCK_FREQ_FOSC8 ((1 << 2) | 1)
+#define SPI_SCK_FREQ_FOSC16 ((0 << 2) | 1)
+#define SPI_SCK_FREQ_FOSC32 ((1 << 2) | 2)
+#define SPI_SCK_FREQ_FOSC64 ((0 << 2) | 2)
+#define SPI_SCK_FREQ_FOSC128 ((0 << 2) | 3)
+  SPCR = (1 << SPE) | (1 << MSTR) | (3 << SPR0);
+  SPSR &= ~(1 << SPI2X);
+}
+
 static inline void spi_write_uint8(uint8_t x)
 {
   /* write the byte and wait for transmission */
@@ -664,6 +678,10 @@ static regtype_t sd_setup(void)
   }
 #endif /* unused */
 
+#if 0
+  sd_set_freq();
+#endif
+
   return 0;
 }
 
@@ -672,9 +690,9 @@ static regtype_t sd_setup(void)
 
 int main(void)
 {
+#if CONFIG_UART
   uart_setup();
-
-  uart_write_string("hi\r\n");
+#endif
 
   if (sd_setup() == -1)
   {
@@ -682,15 +700,16 @@ int main(void)
     return -1;
   }
 
-  /* write unit test */
+#if 0 /* write unit test */
   {
     regtype_t i;
     sd_read_block(0x10);
     for (i = 0; i < ('z' - 'a'); ++i) sd_block_buf[0x2a + i] = 'a' + i;
     sd_write_block(0x10);
   }
+#endif /* write unit test */
 
-  /* read unit test */
+#if 0 /* read unit test */
   {
     static const uint32_t bids[] = { 0x00, 0x10, 0x2a };
 
@@ -701,6 +720,8 @@ int main(void)
     for (i = 0; i < (sizeof(bids) / sizeof(bids[0])); ++i)
     {
       sd_read_block(bids[i]);
+
+      /* print only the first 0x40 bytes */
       uart_write_hex(sd_block_buf + 0x00, 16);
       uart_write_string("\r\n");
       uart_write_hex(sd_block_buf + 0x10, 16);
@@ -712,6 +733,7 @@ int main(void)
       uart_write_string("\r\n");
     }
   }
+#endif /* read unit test */
 
   return 0;
 }
