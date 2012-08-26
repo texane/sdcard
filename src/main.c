@@ -161,11 +161,12 @@ static inline void spi_write_uint8(uint8_t x)
 {
   /* write the byte and wait for transmission */
 
-  SPDR = x;
+#if 1 /* FIXME: needed for sd_read_block to work */
+  __asm__ __volatile__ ("nop\n\t");
+  __asm__ __volatile__ ("nop\n\t");
+#endif
 
-  /* needed during sd_read_block */
-  __asm__ __volatile__ ("nop\n\t");
-  __asm__ __volatile__ ("nop\n\t");
+  SPDR = x;
 
 #if 0
   if (SPSR & (1 << WCOL))
