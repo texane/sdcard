@@ -92,12 +92,26 @@ static void uart_write_string(const char* s)
   for (; *s; ++s) uart_write((const uint8_t*)s, 1);
 }
 
+#endif /* CONFIG_UART */
+
+
+#define CONFIG_SD_DEBUG 1
+#if CONFIG_SD_DEBUG
 #define XSTR(__s) STR(__s)
 #define STR(__s) #__s
 #define PRINT_FAIL() uart_write_string(XSTR(__LINE__) ": fail\r\n")
 #define PRINT_PASS() uart_write_string(XSTR(__LINE__) ": pass\r\n")
-
-#endif /* CONFIG_UART */
+#define PRINT_BUF(__p, __n)				\
+do {							\
+  uart_write_string(XSTR(__LINE__) ": buf\r\n");	\
+  uart_write_hex(__p, __n);				\
+  uart_write_string("\r\n");				\
+} while (0)
+#else
+#define PRINT_FAIL()
+#define PRINT_PASS()
+#define PRINT_BUF(__p, __n)
+#endif /* CONFIG_SD_DEBUG */
 
 
 /* spi module, used by sd */
@@ -366,6 +380,8 @@ __attribute__((unused)) static regtype_t sd_read_csd(void)
   return 0;
 }
 
+#if CONFIG_UART
+
 __attribute__((unused)) static void sd_print_csd(void)
 {
   struct csd_v1
@@ -454,6 +470,8 @@ __attribute__((unused)) static void sd_print_csd(void)
   uart_write_hex(&x, 1);
   uart_write_string("\r\n");
 }
+
+#endif /* CONFIG_UART */
 
 __attribute__((unused))
 static regtype_t sd_write_csd(void)
@@ -583,17 +601,14 @@ static regtype_t sd_setup(void)
   }
   if (i == 0xff) { PRINT_FAIL(); return -1; }
 
-  PRINT_PASS();
-  uart_write_hex(sd_resp_buf, 1);
-  uart_write_string("\r\n");
+  PRINT_BUF(sd_resp_buf, 1);
 
   /* cmd8 (send_if_cond) */
   sd_write_cmd(0x08, 0x00, 0x00, 0x01, 0xaa, 0x43);
   /* card echos back voltage and check pattern */
   if (sd_read_r7()) { PRINT_FAIL(); return -1; }
 
-  uart_write_hex(sd_resp_buf, 5);
-  uart_write_string("\r\n");
+  PRINT_BUF(sd_resp_buf, 5);
 
   /* illegal command */
   if (sd_resp_buf[0] & (1 << 2))
@@ -617,8 +632,7 @@ static regtype_t sd_setup(void)
   sd_write_cmd(0x3a, 0x00, 0x00, 0x00, 0x00, 0xff);
   if (sd_read_r3()) { PRINT_FAIL(); return -1; }
   /* accept 3.3v - 3.6v */
-  uart_write_hex(sd_resp_buf, 5);
-  uart_write_string("\r\n");
+  PRINT_BUF(sd_resp_buf, 5);
   if ((sd_resp_buf[3] >> 4) == 0) { PRINT_FAIL(); return -1; }
 #endif
 
@@ -635,16 +649,8 @@ static regtype_t sd_setup(void)
     sd_write_cmd(0x37, 0x00, 0x00, 0x00, 0x00, 0xff);
     if (sd_read_r1()) { PRINT_FAIL(); return -1; }
 
-    uart_write_string("cmd55: ");
-    uart_write_hex(sd_resp_buf, 1);
-    uart_write_string("\r\n");
-
     sd_write_cmd(0x29, arg, 0x00, 0x00, 0x00, 0xff);
     if (sd_read_r1()) { PRINT_FAIL(); return -1; }
-
-    uart_write_string("acmd41: ");
-    uart_write_hex(sd_resp_buf, 1);
-    uart_write_string("\r\n");
 
     /* wait for in_idle_state == 0 */
     if ((sd_resp_buf[0] & (1 << 0)) == 0) break ;
