@@ -16,8 +16,6 @@ typedef uint8_t uregtype_t;
 
 
 #define CONFIG_UART 1
-
-
 #if CONFIG_UART /* uart */
 
 static inline void set_baud_rate(long baud)
@@ -163,11 +161,13 @@ static inline void spi_write_uint8(uint8_t x)
 {
   /* write the byte and wait for transmission */
 
-  /* while ((SPSR & (1 << SPIF)) == 1) ; */
-
   SPDR = x;
 
-#if 1
+  /* needed during sd_read_block */
+  __asm__ __volatile__ ("nop\n\t");
+  __asm__ __volatile__ ("nop\n\t");
+
+#if 0
   if (SPSR & (1 << WCOL))
   {
 #if 1
@@ -712,7 +712,9 @@ int main(void)
     return -1;
   }
 
-#if 0 /* write unit test */
+  PRINT_PASS();
+
+#if 1 /* write unit test */
   {
     regtype_t i;
     sd_read_block(0x10);
@@ -721,13 +723,11 @@ int main(void)
   }
 #endif /* write unit test */
 
-#if 0 /* read unit test */
+#if 1 /* read unit test */
   {
     static const uint32_t bids[] = { 0x00, 0x10, 0x2a };
 
     regtype_t i;
-
-    uart_write_string("sd_setup() == 0\r\n");
 
     for (i = 0; i < (sizeof(bids) / sizeof(bids[0])); ++i)
     {
